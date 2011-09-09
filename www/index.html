@@ -1,0 +1,260 @@
+<html>
+	<head>
+		<title>Todo</title>
+		<script src="/socket.io/socket.io.js"></script>
+		<script src="/jquery.js"></script>
+		<script>
+			var socket;
+			var todoLists;
+			$(document).ready( function( ){
+				socket		= io.connect( 'http://HTTP_SERVER_HOST', { port: 8080 } );
+				todoLists	= { };
+
+				$("#status").html( "Connected." );
+
+				socket.on( 'disconnect', function( ){
+					$("#status").html( "Disconnected" );
+				} );
+
+				socket.on( 'return_all', function( t_todoLists ){
+					todoLists	= t_todoLists;
+					updateTodoLists( );
+				} );
+
+				socket.on( 'update', function( t_obj ){
+					if( t_obj.list == $(".todolist_name").html( ) ){
+						getTodoList( t_obj.list );
+					}else{
+						// If an update occurs for a list we don't know about, run through the known todoLists. Update lists if nto found.
+						for( t_counter in todoLists ){
+							if( todoLists[t_counter] == t_obj.list ){
+								return;
+							}
+						}
+						socket.emit( 'request_all' );
+					}
+				} );
+
+				function getTodoList( t_todoListName ){
+					socket.emit( 'request_one', t_todoListName );
+					socket.on( 'return_one', function( t_return ){
+						t_name		= t_return.name;
+						t_data		= t_return.data;
+
+						t_html	= "<div class='todolist_name'>" + t_name + "</div>";
+						
+						for( t_counter=0; t_counter<t_data.length; t_counter++ ){
+							if( t_data[t_counter].checked ){
+								t_html	+= "<div class='box todo_task checked priority_" + t_data[t_counter].priority + "'>";
+							}else{
+								t_html	+= "<div class='box todo_task priority_" + t_data[t_counter].priority + "'>";
+							}
+							t_html	+= "<table class='task_top' width='100%'><tr>";
+                                                        if( t_data[t_counter].checked ){
+                                                                t_html  += "  <td width='20'><input type='checkbox' class='task_checkbox' checked='checked'></td>";
+                                                        }else{
+                                                                t_html  += "  <td width='20'><input type='checkbox' class='task_checkbox'></td>";
+                                                        }
+							t_html	+= "  <td class='task_name' align='left'>" + t_data[t_counter].name + "</td>";
+							t_html	+= "  <td class='delete_task' align='right' width='100'>delete task</td>";
+							t_html	+= "  <td class='show_task' align='right' width='100'>show task</td>";
+							t_html	+= "</tr>";
+							t_html	+= "</table>";
+							t_html	+= "<div class='hidden task_content_container'><form class='update_task' action='javascript:'>";
+							t_html	+= "<textarea rows='6' cols='100' class='task_content'>" + t_data[t_counter].content + "</textarea><br />";
+							t_html	+= "Priority: <select class='task_priority'>";
+							t_priorities	= [ "high", "medium", "low" ];
+							for( t_priorityCounter in t_priorities ){
+								if( t_data[t_counter].priority == t_priorities[t_priorityCounter] ){
+									t_html += "<option selected=selected>" + t_priorities[t_priorityCounter] + "</option>";
+								}else{
+									t_html += "<option>" + t_priorities[t_priorityCounter] + "</option>";
+								}
+							}
+							t_html	+= "</select>";
+							t_html	+= "<input type='submit' value='update'>";
+							t_html	+= "</form></div>";
+							t_html	+= "</div>";
+						};
+						$("#todo_list").html( t_html );
+
+                                                if( $("#sort").attr( "checked" ) == "checked" ){
+                                                        sortTodoList( );
+                                                }
+
+						if( $("#hide_completed").attr("checked") == "checked" ){
+							$(".checked").hide();
+						};
+
+						$("#todo_list .hidden").hide();
+						$("#todo_list .task_name").click( function( ){
+							$(this).parents(".todo_task").children( ".task_content_container" ).toggle( );
+						} );
+						$("#todo_list .show_task").click( function( ){
+							$(this).parents(".todo_task").children( ".task_content_container" ).toggle( );
+						} );
+
+						$(".task_checkbox").click( function( ){
+							if( this.checked ){
+								task_name = $(this).parent().next(".task_name").html();
+								todo_list = $(".todolist_name").html();
+								socket.emit( 'check_task', { 'task_name': task_name, 'todo_list': todo_list } );
+							}else{
+								task_name	= $(this).parent().next( ".task_name" ).html();
+								todo_list	= $(".todolist_name").html();
+								socket.emit( 'uncheck_task', { 'task_name': task_name, 'todo_list': todo_list } );
+							}
+						} );
+
+						$(".delete_task").click( function( ){
+							task_name	= $(this).prev(".task_name").html();
+							todo_list	= $(".todolist_name").html();
+							socket.emit( 'delete_task', { 'todo_list': todo_list, 'task_name': task_name } );
+						} );
+
+						$(".update_task").submit( function( ){
+							todo_list	= $(".todolist_name").html();
+							task_name	= $(this).parents(".todo_task").find( '.task_name' ).html();
+							task_content	= $(this).children( ".task_content" ).val();
+							task_priority	= $(this).children( ".task_priority" ).val( );
+							socket.emit( 'update_task', { 'todo_list': todo_list, 'task_name': task_name, 'new_task_content': task_content, 'new_task_priority': task_priority } );
+						} );
+
+						$(".require_todolist :input").attr( 'disabled', false );
+					} );
+				}
+
+				$("#sort").click( function( ){
+					getTodoList( $(".todolist_name").html() );
+				} );
+
+				$("#hide_completed").click( function( ){
+					$(".checked").toggle();
+					//getTodoList( $(".todolist_name").html() );
+				} );
+
+				function updateTodoLists( ){
+					t_html	= "<ul class='todo_lists'>";
+					for( t_todoList in todoLists ){
+						t_html += "<li><span class='todo_list'>" + todoLists[t_todoList] + "</span></li>";
+					};
+					t_html	+= "</ul>";
+					$("#todo_lists").html( t_html );
+
+					$(".todo_list").click( function( ){
+						var t_todoList	= $(this).html();
+						getTodoList( t_todoList );
+					} );
+				};
+
+				function sortTodoList( ){
+					t_priorityList	= [ "priority_high", "priority_medium", "priority_low" ];
+					t_html		= "<div class='todolist_name'>" + $(".todolist_name").html() + "</div>";
+					for( t_counter in t_priorityList ){
+						$(".todo_task").each( function( ){
+							if( $(this).hasClass( t_priorityList[t_counter] ) && ! $(this).hasClass( "checked" ) ){
+								t_html	+= "<div class='box todo_task " + t_priorityList[t_counter] + "'>" + $(this).html() + "</div>";
+							};
+						} );
+						$(".todo_task").each( function( ){
+							if( $(this).hasClass( t_priorityList[t_counter] ) && $(this).hasClass( "checked" ) ){
+								t_html	+= "<div class='box todo_task " + t_priorityList[t_counter] + " checked'>" + $(this).html() + "</div>";
+							};
+						} );
+					}
+					$("#todo_list").html( t_html );
+				};
+
+				$("#add_task").submit( function( ){
+					socket.emit( 'add_task', {
+									'todo_list': $(".todolist_name").html(),
+									'task_name': $("#task_name").val(),
+									'task_content': $("#task_content").val(),
+									'priority': $("#task_priority :selected").val() } );
+
+					// Clear the task from the window..
+					$("#task_name").val( "" );
+					$("#task_content").val( "" );
+				} );
+
+				$("#add_list").submit( function( ){
+					socket.emit( 'add_list', { 'todo_list': $("#add_list_name").val() } );
+					$("#add_list_name").val( "" );
+				} );
+				
+				$(".require_todolist :input").attr( 'disabled', true );
+
+				socket.emit( 'request_all' );
+			} );
+		</script>
+		<style type="text/css">
+			body{ font-family: "Arial", "Verdana", Sans-serif; }
+
+			.box{ 
+				border: 1px solid black;
+				background-color: #eeeeee;
+				width: 80%;
+				padding: 5px;
+				margin-bottom: 8px;
+				margin-top: 8px;
+			}
+
+			.todolist_name{ font-weight: bold; font-size: 120%; }
+			#todo_lists{ width: 80%; text-align: left; margin-top: 15px; margin-bottom: 15px; padding: 0px; }
+			.todo_lists{ display:inline; margin: 0px; padding: 0px; }
+			.todo_lists li{ display: inline; margin-right: 30px; }
+			.todo_list{ background-color: #eeeeee; border: 1px solid #cccccc; font-size: 110%; padding: 5px;}
+			.task_content{ padding: 5px; margin-left: 15px; }
+			#statusline{ font-family: Tahoma; font-size: 85%; padding: 5px; }
+			#right_block{ float: right; width: 18%; }
+
+			.checked{	text-decoration: line-through;
+					background-image:url('stripe.png');
+					background-repeat: repeat;
+			}
+			.checked td{ text-decoration: line-through; }
+			.checked .show_task{ text-decoration: none; }
+			.checked .delete_task{ text-decoration: none; }
+			.delete_task{ text-align: right; }
+			.show_task{ text-align: right; }
+			.priority_high{ background-color: rgba( 250, 100, 100, 0.8 ); }
+			.priority_low{ background-color: rgba( 100, 100, 250, 0.8 ); }
+			#options{ width: 80%; margin-bottom: 5px; margin-top: 5px; }
+			#top_bar{ width: 100%; }
+		</style>
+	</head>
+	<body>
+		<div id='wrapper'>
+			<table id='top_bar'><tr><td id='todo_lists'></td><td align='right' valign="middle"><form action='javascript:' id='add_list'><input type='text' id='add_list_name'><input type='submit' value='Add List'></form></td></tr></table>
+			<div id='right_block'>
+				<form id='add_task' action='javascript:' class='require_todolist'>
+					<table>
+						<tr>
+							<td colspan='2'>Add a Task</td>
+						</tr>
+						<tr>
+							<td>Task Name</td>
+							<td><input type='text' id='task_name'></td>
+						</tr>
+						<tr>
+							<td>Task Priority</td>
+							<td><select id='task_priority'><option>high</option><option>medium</option><option>low</option></select></td>
+						</tr>
+						<tr>
+							<td>Task Content</td>
+							<td><textarea rows='5' id='task_content'></textarea></td>
+						</tr>
+						<tr>
+							<td colspan='2'><input type='submit'></td>
+						</tr>
+					</table>
+				</form>
+			</div>
+			<div id='options' class='require_todolist'><input type='checkbox' id='sort' checked=checked> Automatically sort? <input type='checkbox' id='hide_completed' checked=checked> Hide completed?</div>
+			<div id='todo_list'></div>
+		</div>
+		<div id='footer'>
+			<div id='statusline'>Status: <span id='status'>Disconnected</span></div>
+		</div>
+	</body>
+</html>

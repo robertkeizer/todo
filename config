@@ -1,0 +1,13 @@
+# This is the config for todo.
+
+# As you can see, blank lines and lines starting with the pound sign are ignored.
+# Other lines are evaluated at startup, so they should be valid javascript lines including the semicolon.
+config['debug']		= true;
+
+config['http_host']	= "todo";
+config['http_port']	= 8080;
+
+# t_root is defined before the config is read in.
+config['http_root']	= require( 'path' ).join( t_root, "www" );
+
+config['database_file']	= require( 'path' ).join( t_root, "database.json" );
